@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OLA Electric ORM</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* === Root and Dark Theme Variables === */
+    :root {
+      --bg: #ffffff; --fg: #1e1e1e; --glass: rgba(0, 0, 0, 0.05);
+      --shadow-glass: rgba(0,0,0,0.05); --input-bg: rgba(230,230,230,0.8);
+      --btn-bg: rgba(200,200,200,0.8); --btn-active-bg: rgba(100,100,255,0.4);
+      --edit-green: #28a745; --delete-red: #dc3545; --add-red: #e63946;
+      --done-green: #2a9d8f; --response-hover: rgba(30,144,255,0.1);
+      --response-border: rgba(0,0,0,0.1); --glass-admin: #e6e6e6;
+      --bg-admin: #f0f0f0; --fav-gold: gold;
+    }
+    body.dark {
+      --bg: #1e1e1e; --fg: #eee; --glass: rgba(255,255,255,0.05);
+      --shadow-glass: rgba(0,0,0,0.2); --input-bg: rgba(40,40,40,0.8);
+      --btn-bg: rgba(60,60,60,0.8); --btn-active-bg: rgba(30,144,255,0.4);
+      --response-hover: rgba(30,144,255,0.2); --response-border: rgba(255,255,255,0.1);
+      --glass-admin: #1a1a1a; --bg-admin: #0d0d0d;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+      font-family: 'Inter', sans-serif; /* Updated to use Inter font */
+      display: flex; flex-direction: column; min-height: 100vh;
+      transition: background 0.3s, color 0.3s;
+      font-size: 16px; line-height: 1.5;
+    }
+    body.admin-mode { background: var(--bg-admin) !important; }
+    header {
+      position: relative; padding: 20px; text-align: center;
+      background: var(--glass); box-shadow: 0 2px 8px var(--shadow-glass);
+      user-select: none;
+    }
+    header h1 {
+      margin: 0; font-weight: 700; font-size: 2.2rem; /* Increased font size */
+      padding: 10px 0; /* Added padding for spacing */
+    }
+    #toggle-theme {
+      position: absolute; top: 20px; right: 120px;
+      width: 40px; height: 20px; background: var(--btn-bg);
+      border-radius: 10px; cursor: pointer;
+      display: flex; align-items: center; justify-content: flex-start;
+      padding: 2px; transition: background-color 0.3s, transform 0.2s;
+    }
+    #toggle-theme:hover { transform: scale(1.1); }
+    #toggle-theme::before {
+      content: '☀️'; width: 16px; height: 16px;
+      background: var(--bg); border-radius: 50%;
+      transition: transform 0.3s, content 0.3s;
+      transform-origin: left center;
+    }
+    body.dark #toggle-theme::before {
+      content: '🌙'; transform: translateX(20px);
+    }
+    #admin-btn {
+      position: absolute; top: 20px; right: 20px;
+      padding: 8px 12px; background: var(--btn-bg);
+      border: none; border-radius: 6px; cursor: pointer;
+      color: var(--fg); font-weight: 600; transition: background-color 0.3s, transform 0.2s;
+    }
+    #admin-btn:hover {
+      background: var(--btn-active-bg); color: white; transform: scale(1.05);
+    }
+    input:-webkit-autofill, textarea:-webkit-autofill {
+      box-shadow: 0 0 0 1000px var(--bg) inset !important;
+      -webkit-text-fill-color: var(--fg) !important;
+      transition: background-color 9999s ease-in-out 0s;
+    }
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(10px); display: flex;
+      align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.4s ease-in-out;
+      z-index: 1000;
+    }
+    .modal-overlay.active { opacity: 1; pointer-events: all; }
+    .modal {
+      width: 95%; max-width: 600px; background: var(--glass);
+      border-radius: 12px; padding: 30px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.2);
+      transform: translateY(-20px); opacity: 0;
+      transition: transform 0.4s ease-out, opacity 0.4s ease-out;
+      user-select: text;
+    }
+    .modal-overlay.active .modal {
+      transform: translateY(0); opacity: 1;
+    }
+    .modal h3 { margin-bottom: 20px; font-size: 1.4em; text-align: center; font-weight: 700; }
+    .modal input, .modal textarea {
+      width: 100%; margin-bottom: 16px; padding: 12px;
+      font-size: 1em; border-radius: 6px; border: 1px solid #999;
+      background: var(--bg); color: var(--fg); resize: vertical;
+      font-family: inherit; transition: border-color 0.2s;
+    }
+    .modal input:focus, .modal textarea:focus { border-color: var(--btn-active-bg); }
+    .modal input[type="date"], .modal input[type="url"] { display: block; }
+    .modal textarea { min-height: 100px; }
+    .modal button {
+      width: 100%; padding: 12px; margin-top: 8px;
+      font-size: 1em; border: none; border-radius: 6px;
+      background: var(--btn-bg); cursor: pointer;
+      color: var(--fg); font-weight: 600;
+      transition: background-color 0.3s, color 0.3s, transform 0.2s;
+    }
+    .modal button:hover {
+      background: var(--btn-active-bg); color: #fff; transform: scale(1.02);
+    }
+    .modal .error {
+      color: #ff4d4f; font-size: 0.9em; margin-top: -10px;
+      margin-bottom: 10px; display: none; font-weight: 600;
+    }
+    .custom-select-wrapper {
+      position: relative; user-select: none; width: 100%;
+      margin-bottom: 15px; font-size: 1em;
+    }
+    .custom-select-trigger {
+      background: var(--btn-bg); padding: 10px 12px;
+      border: 1px solid #999; border-radius: 8px;
+      cursor: pointer; color: var(--fg);
+      position: relative; font-weight: 600; transition: border-color 0.2s;
+    }
+    .custom-select-trigger:hover { border-color: var(--btn-active-bg); }
+    .custom-select-trigger::after {
+      content: "▾"; position: absolute;
+      right: 12px; top: 50%; transform: translateY(-50%);
+      color: gray; pointer-events: none;
+    }
+    .custom-options {
+      position: absolute; top: 100%; left: 0; right: 0;
+      background: var(--input-bg); border: 1px solid #999;
+      border-radius: 8px; max-height: 0; overflow: hidden;
+      opacity: 0; transition: max-height 0.3s ease, opacity 0.3s ease;
+      z-index: 10;
+    }
+    .custom-select-wrapper.open .custom-options {
+      max-height: 200px; opacity: 1; overflow-y: auto;
+    }
+    .custom-option {
+      padding: 10px 12px; cursor: pointer;
+      transition: background-color 0.2s; color: var(--fg);
+    }
+    .custom-option:hover { background: var(--btn-active-bg); }
+    .custom-option.selected {
+      background: var(--btn-active-bg); font-weight: 700;
+    }
+    body.dark .custom-options { background: #222 !important; color: #fff; }
+    body.dark .custom-option {
+      background: #222; color: #fff;
+    }
+    body.dark .custom-option:hover { background: #333; }
+    .main-wrapper {
+      flex: 1; padding: 20px; display: flex; gap: 20px; overflow: hidden;
+      min-height: 0;
+    }
+    .sidebar {
+      width: 320px; /* Increased sidebar width to accommodate larger subcategory buttons */
+      background: var(--glass);
+      backdrop-filter: blur(12px); border-radius: 16px;
+      padding: 20px; box-shadow: 0 8px 24px var(--shadow-glass);
+      display: flex; flex-direction: column; transition: width 0.3s;
+    }
+    .sidebar button, .sidebar input {
+      width: 100%; padding: 12px; margin-bottom: 15px;
+      border-radius: 8px; border: 1px solid #888;
+      background: var(--input-bg); color: var(--fg);
+      font-size: 1em; outline-offset: 2px; cursor: pointer;
+      font-weight: 600; transition: background-color 0.3s, transform 0.2s;
+    }
+    .sidebar button:hover, .sidebar input:focus {
+      background: var(--btn-active-bg); color: #fff;
+      border-color: var(--btn-active-bg); transform: scale(1.02);
+    }
+    .subcat-buttons {
+      display: flex; flex-direction: column;
+      gap: 4px; margin-bottom: 15px; user-select: none;
+    }
+    .subcat-buttons button {
+      padding: 8px 0.2cm; /* Reduced padding */
+      background: var(--btn-bg);
+      border: none; border-radius: 10px; text-align: center;
+      cursor: pointer; font-size: 1.1em; font-weight: 600;
+      color: var(--fg); transition: background-color 0.3s, transform 0.2s, box-shadow 0.3s;
+      display: flex; align-items: center; justify-content: center;
+      width: 100%; height: 40px; /* Reduced height */
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Subtle shadow for better look */
+    }
+    .subcat-buttons button:hover {
+      transform: scale(1.02); box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .subcat-buttons button.active {
+      background: var(--btn-active-bg);
+      font-weight: 700; color: #000;
+    }
+    .container {
+      flex: 1; background: var(--glass);
+      backdrop-filter: blur(12px); border-radius: 16px;
+      padding: 20px; box-shadow: 0 8px 24px var(--shadow-glass);
+      overflow-y: auto; min-height: 0; transition: padding 0.3s;
+    }
+    .box {
+      margin-bottom: 16px; border-radius: 8px;
+      padding: 10px; background: var(--glass);
+      box-shadow: 0 2px 4px var(--shadow-glass); transition: box-shadow 0.2s;
+    }
+    .box:hover { box-shadow: 0 4px 8px var(--shadow-glass); }
+    .service-row {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 4fr) auto;
+      align-items: center; padding: 10px 8px;
+      transition: background-color 0.3s, transform 0.2s;
+      border-bottom: 1px solid var(--response-border);
+      word-break: break-word;
+    }
+    .service-row:hover {
+      background: var(--response-hover);
+      transform: translateY(-2px);
+    }
+    .service-row .query-header, .service-row .response-header {
+      font-weight: bold; font-size: 1.2em;
+    }
+    .service-row .query-text {
+      font-weight: bold;
+    }
+    .service-row > div:nth-child(2) {
+      margin-left: 20px;
+    }
+    .edit-btn, .delete-btn {
+      padding: 4px 12px; border: none; border-radius: 4px;
+      color: #fff; cursor: pointer; font-size: 1em;
+      margin-right: 6px; user-select: none; transition: transform 0.2s;
+    }
+    .edit-btn:hover, .delete-btn:hover { transform: scale(1.1); }
+    .edit-btn { background-color: var(--edit-green); }
+    .edit-btn:hover { background-color: #218838; }
+    .delete-btn { background-color: var(--delete-red); }
+    .delete-btn:hover { background-color: #c82333; }
+    .copy-btn {
+      background: var(--btn-bg); color: var(--fg);
+      padding: 6px 14px; font-size: 0.9em;
+      border: none; border-radius: 4px; cursor: pointer;
+      transition: background-color 0.2s, transform 0.2s;
+      margin-right: 6px; margin-left: 20px; /* Added gap between response text and copy button */
+      user-select: none;
+    }
+    .copy-btn:hover {
+      background: var(--btn-active-bg); color: #fff; transform: scale(1.05);
+    }
+    @keyframes flash {
+      0% { background: var(--btn-active-bg); transform:scale(1.1); }
+      100% { background: var(--btn-bg); transform:scale(1); }
+    }
+    .copy-btn.flash {
+      animation: flash 0.5s ease; color: #fff !important;
+    }
+    .fav-btn {
+      font-size: 1.4em; background: none; border: none;
+      cursor: pointer; transition: color 0.2s, transform 0.2s; color: gray;
+      outline-offset: 2px; user-select: none; padding: 0; margin: 0;
+    }
+    .fav-btn:hover { transform: scale(1.2); }
+    .fav-btn.fav { color: var(--fav-gold); }
+    .bottom-controls {
+      display: flex; justify-content: center; gap: 15px;
+      margin: 20px; user-select: none;
+    }
+    #add-new-btn, #done-btn {
+      padding: 10px 28px; border: none; border-radius: 6px;
+      cursor: pointer; font-weight: 700;
+      font-size: 1.1em; color: #fff; transition: transform 0.2s;
+    }
+    #add-new-btn:hover, #done-btn:hover { transform: scale(1.05); }
+    #add-new-btn { background-color: var(--add-red); display:none; }
+    #add-new-btn:hover { background-color: #b8333d; }
+    #done-btn { background-color: var(--done-green); display:none; }
+    #done-btn:hover { background-color: #237f77; }
+    #spinner-overlay {
+      position: fixed; inset:0; background: rgba(0,0,0,0.3);
+      display:none; align-items:center; justify-content:center;
+      z-index:1000; user-select:none; transition: opacity 0.3s;
+    }
+    #spinner-overlay[style*="flex"] { opacity: 1; }
+    .spinner {
+      width:40px; height:40px;
+      border:6px solid #eee; border-top:6px solid #2196f3;
+      border-radius:50%; animation:spin 1s linear infinite;
+      user-select:none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width:600px) {
+      .sidebar { width:100%; padding: 15px; }
+      .main-wrapper { flex-direction: column; padding:10px; gap: 10px; }
+      .service-row { grid-template-columns: 1fr 2fr auto; padding: 12px 8px; }
+      .container { padding: 15px; }
+      .subcat-buttons button { height: 50px; font-size: 1em; }
+      .copy-btn { margin-left: 10px; } /* Adjusted gap for mobile */
+    }
+    /* ----- New Styles ----- */
+    .form-link { font-weight:600; color:var(--btn-active-bg); text-decoration:none; transition: color 0.2s; }
+    .form-link:hover { color: darken(var(--btn-active-bg), 10%); }
+    .update-date { font-weight:bold; margin-top:16px; }
+    .update-item { margin-left:10px; }
+    .response-container { margin-bottom: 10px; }
+    .add-response-btn {
+      width: auto !important; padding: 8px 16px !important; margin-top: 0 !important;
+      background: var(--add-red); color: white; display: inline-block;
+    }
+    .add-response-btn:hover {
+      background: #b8333d; color: white;
+    }
+    .remove-response-btn {
+      width: auto !important; padding: 4px 8px !important; margin-top: 0 !important; margin-left: 5px;
+      background: var(--delete-red); color: white; display: inline-block;
+    }
+    .remove-response-btn:hover {
+      background: #c82333; color: white;
+    }
+    .category-header {
+      font-weight: bold; font-size: 1.3em; margin: 10px 0; color: var(--fg);
+      border-bottom: 2px solid var(--response-border); padding-bottom: 5px;
+    }
+    /* New search bar styling */
+    .search-container {
+      padding: 10px 20px; /* Separate padding for search bar */
+      background: var(--glass);
+      text-align: center;
+    }
+    #searchInput {
+      width: 100%; /* Full size search bar */
+      max-width: 800px; /* Optional max-width for larger screens */
+      padding: 12px;
+      border-radius: 8px; border: 1px solid #888;
+      background: var(--input-bg); color: var(--fg);
+      font-size: 1em; outline-offset: 2px;
+      transition: background-color 0.3s, transform 0.2s;
+    }
+    #searchInput:focus {
+      background: var(--btn-active-bg); color: #fff;
+      border-color: var(--btn-active-bg); transform: scale(1.02);
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>OLA Electric ORM</h1>
+  <div id="toggle-theme" title="Toggle Theme"></div>
+  <button id="admin-btn" aria-label="Admin Login">Admin</button>
+</header>
+<div class="search-container">
+  <input id="searchInput" type="search" placeholder="Search…" autocomplete="off" aria-label="Search Responses" />
+</div>
+<div id="spinner-overlay" aria-hidden="true"><div class="spinner" role="status" aria-label="Loading"></div></div>
+<div class="main-wrapper">
+  <aside class="sidebar" role="navigation" aria-label="Sidebar">
+    <button id="show-favorites" data-active="0" aria-pressed="false">View Favorites</button>
+    <div class="custom-select-wrapper" aria-haspopup="listbox" role="combobox" aria-expanded="false" tabindex="0">
+      <div class="custom-select-trigger" role="button" tabindex="0">Responses</div>
+      <div class="custom-options" role="listbox">
+        <div class="custom-option selected" data-value="Responses" role="option" tabindex="0">Responses</div>
+        <div class="custom-option" data-value="Forms / Sheets" role="option" tabindex="0">Forms / Sheets</div>
+        <div class="custom-option" data-value="New Updates" role="option" tabindex="0">New Updates</div>
+      </div>
+    </div>
+    <input type="hidden" id="main-select" value="Responses" />
+    <nav class="subcat-buttons" id="subcat-buttons" aria-label="Subcategories">
+      <button data-cat="Holding Responses">Holding Responses</button>
+      <button data-cat="Calling Responses">Calling Responses</button>
+      <button data-cat="Ask Details Responses">Ask Details Responses</button>
+      <button data-cat="Delivery Related Responses">Delivery Related Responses</button>
+      <button data-cat="Service Responses">Service Responses</button>
+      <button data-cat="RC/Subsidy Responses">RC/Subsidy Responses</button>
+      <button data-cat="After Call Holding Responses">After Call Holding Responses</button>
+      <button data-cat="TAT Responses">TAT Responses</button>
+      <button data-cat="Others Responses">Others Responses</button>
+      <button data-cat="New Responses">New Responses</button>
+    </nav>
+  </aside>
+  <main class="container" id="results" role="main" tabindex="-1"></main>
+</div>
+<div class="bottom-controls" role="region" aria-label="Controls">
+  <button id="add-new-btn" aria-hidden="true">Add New Entry</button>
+  <button id="done-btn" aria-hidden="true">DONE</button>
+</div>
+<!-- Admin Login -->
+<div class="modal-overlay" id="login-modal" role="dialog" aria-modal="true" aria-labelledby="login-modal-title" tabindex="-1">
+  <div class="modal">
+    <h3 id="login-modal-title">🔒 Admin Login</h3>
+    <input type="text" id="login-user" placeholder="User ID" autocomplete="username" aria-label="User ID" />
+    <input type="password" id="login-pass" placeholder="Password" autocomplete="current-password" aria-label="Password" />
+    <button id="login-confirm">Login</button>
+    <button id="login-cancel">Cancel</button>
+  </div>
+</div>
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title" tabindex="-1">
+  <div class="modal">
+    <h3 id="edit-modal-title">Add Entry</h3>
+    <input type="text" id="edit-name" placeholder="Name / Title" />
+    <input type="url" id="edit-link" placeholder="Link (for Forms / Sheets)" style="display:none" />
+    <input type="date" id="edit-date" style="display:none" />
+    <input type="text" id="edit-query" placeholder="Query (optional)" style="display:none" />
+    <div id="responses-container">
+      <div class="response-container">
+        <textarea id="edit-response-0" placeholder="Response or details"></textarea>
+      </div>
+    </div>
+    <button id="add-response-btn" class="add-response-btn" style="display:none">Add Another Response</button>
+    <div id="edit-error" class="error" role="alert">Please fill required fields.</div>
+    <button id="edit-confirm">Save</button>
+    <button id="edit-cancel">Cancel</button>
+  </div>
+</div>
+<script>
+  /* === State & Data === */
+  const storageKey = 'olaORMv2';
+  const defaultData = {
+    "Holding Responses": [], "Calling Responses": [], "Ask Details Responses": [],
+    "Delivery Related Responses": [], "Service Responses": [], "RC/Subsidy Responses": [],
+    "After Call Holding Responses": [], "TAT Responses": [], "Others Responses": [],
+    "New Responses": [], "Responses": [], "Forms / Sheets": [], "New Updates": []
+  };
+  let data = JSON.parse(localStorage.getItem(storageKey)) || defaultData;
+  const multiCats = ["Delivery Related Responses", "Service Responses", "RC/Subsidy Responses", "Others Responses", "New Responses"];
+  const responseCats = ["Holding Responses", "Calling Responses", "Ask Details Responses", "Delivery Related Responses", "Service Responses", "RC/Subsidy Responses", "After Call Holding Responses", "TAT Responses", "Others Responses", "New Responses"];
+  let currentCat = null;
+  let isAdmin = false;
+  let editing = null;
+  const favorites = {};
+  /* === Elements === */
+  const el = {
+    spinner: document.getElementById('spinner-overlay'),
+    results: document.getElementById('results'),
+    addBtn: document.getElementById('add-new-btn'),
+    doneBtn: document.getElementById('done-btn'),
+    loginModal: document.getElementById('login-modal'),
+    editModal: document.getElementById('edit-modal'),
+    eName: document.getElementById('edit-name'),
+    eLink: document.getElementById('edit-link'),
+    eDate: document.getElementById('edit-date'),
+    eQuery: document.getElementById('edit-query'),
+    eRespContainer: document.getElementById('responses-container'),
+    eAddRespBtn: document.getElementById('add-response-btn'),
+    eErr: document.getElementById('edit-error'),
+    subButtons: document.querySelectorAll('.subcat-buttons button'),
+    showFavBtn: document.getElementById('show-favorites'),
+    searchInput: document.getElementById('searchInput'),
+    mainSelect: document.getElementById('main-select')
+  };
+  function saveData() {
+    localStorage.setItem(storageKey, JSON.stringify(data));
+  }
+  function showSpinner(show=true) {
+    el.spinner.style.display = show ? 'flex' : 'none';
+  }
+  function clearResults() {
+    el.results.innerHTML = '';
+  }
+  function copyText(text, btn) {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => triggerFlash(btn));
+    } else triggerFlash(btn);
+  }
+  function triggerFlash(btn) {
+    btn.textContent = 'Copied!';
+    btn.classList.remove('flash');
+    void btn.offsetWidth;
+    btn.classList.add('flash');
+    setTimeout(() => {
+      btn.textContent = 'Copy';
+      btn.classList.remove('flash');
+    }, 1000);
+  }
+  function renderResponseItem(box, item, i, j, cat, isAdmin, favorites, copyText) {
+    const isNoQueryCat = (cat === "Holding Responses" || cat === "Calling Responses");
+    const query = item.query || '';
+    const r = item.responses[j];
+    const key = `${cat}|${i}|${j}`;
+    const row = document.createElement('div'); row.className = 'service-row';
+    if (isNoQueryCat) {
+      row.style.gridTemplateColumns = 'minmax(0, 6fr) auto'; // No query column
+    }
+    const c2 = document.createElement('div'); c2.textContent = r;
+    const actions = document.createElement('div');
+    if (isAdmin) {
+      const e = document.createElement('button');
+      e.className = 'edit-btn'; e.textContent = 'Edit'; e.onclick = () => openEditor('edit', i);
+      const d = document.createElement('button');
+      d.className = 'delete-btn'; d.textContent = 'Delete'; d.onclick = () => {
+        data[cat].splice(i, 1); saveData(); render();
+      };
+      actions.append(e, d);
+    } else {
+      const copy = document.createElement('button');
+      copy.className = 'copy-btn'; copy.textContent = 'Copy'; copy.onclick = () => copyText(r, copy);
+      const fav = document.createElement('button');
+      fav.className = 'fav-btn' + (favorites[key] ? ' fav' : '');
+      fav.textContent = '★'; fav.onclick = () => { favorites[key] = !favorites[key]; fav.classList.toggle('fav', favorites[key]); };
+      actions.append(copy, fav);
+    }
+    if (!isNoQueryCat) {
+      const c1 = document.createElement('div'); c1.textContent = j === 0 ? query : ''; c1.className = 'query-text';
+      row.append(c1, c2, actions);
+    } else {
+      row.append(c2, actions);
+    }
+    box.appendChild(row);
+  }
+  function render() {
+    showSpinner(true);
+    clearResults();
+    const cat = currentCat;
+    if (!cat) { showSpinner(false); return; }
+    setTimeout(() => {
+      const searchTerm = el.searchInput.value.trim().toLowerCase();
+      const showFav = el.showFavBtn.getAttribute('data-active') === '1';
+      const mainCat = el.mainSelect.value;
+
+      if (mainCat === "Responses" && searchTerm) {
+        // Universal search across all response categories
+        const headerBox = document.createElement('div');
+        headerBox.className = 'box';
+        headerBox.innerHTML = `
+          <div class="service-row header">
+            <div class="query-header">QUERY</div><div class="response-header">RESPONSES</div>
+          </div>`;
+        el.results.appendChild(headerBox);
+
+        responseCats.forEach(subCat => {
+          const arr = data[subCat];
+          const filteredItems = arr.filter(item => {
+            const query = item.query || '';
+            const responses = item.responses || [];
+            const combined = query + ' ' + responses.join(' ');
+            return combined.toLowerCase().includes(searchTerm);
+          });
+
+          if (filteredItems.length > 0) {
+            // Add category header
+            const catHeader = document.createElement('div');
+            catHeader.className = 'category-header';
+            catHeader.textContent = subCat;
+            el.results.appendChild(catHeader);
+
+            filteredItems.forEach((item, i) => {
+              const box = document.createElement('div'); box.className = 'box';
+              item.responses.forEach((r, j) => {
+                const key = `${subCat}|${i}|${j}`;
+                if (showFav && !favorites[key]) return;
+                renderResponseItem(box, item, i, j, subCat, isAdmin, favorites, copyText);
+              });
+              if (box.children.length > 0) el.results.appendChild(box);
+            });
+          }
+        });
+      } else {
+        // Normal rendering for selected category
+        const arr = data[cat];
+        const isResponseCat = responseCats.includes(cat);
+        const isNoQueryCat = (cat === "Holding Responses" || cat === "Calling Responses");
+        if (isResponseCat && arr.length && !isNoQueryCat) {
+          const headerBox = document.createElement('div');
+          headerBox.className = 'box';
+          headerBox.innerHTML = `
+            <div class="service-row header">
+              <div class="query-header">QUERY</div><div class="response-header">RESPONSES</div>
+            </div>`;
+          el.results.appendChild(headerBox);
+        } else if (isResponseCat && arr.length && isNoQueryCat) {
+          const headerBox = document.createElement('div');
+          headerBox.className = 'box';
+          headerBox.innerHTML = `
+            <div class="service-row header" style="grid-template-columns: minmax(0, 6fr) auto;">
+              <div class="response-header">RESPONSES</div>
+            </div>`;
+          el.results.appendChild(headerBox);
+        }
+        arr.forEach((item, i) => {
+          if (cat === "Forms / Sheets") {
+            const key = `${cat}|${i}`;
+            if (showFav && !favorites[key]) return;
+            if (searchTerm && !(item.name + item.desc + item.url).toLowerCase().includes(searchTerm)) return;
+            const box = document.createElement('div'); box.className = 'box';
+            const row = document.createElement('div'); row.className = 'service-row';
+            const c = document.createElement('div');
+            c.innerHTML = `<a href="${item.url}" target="_blank" class="form-link">${item.name}</a><br><small>${item.desc || ''}</small>`;
+            const c2 = document.createElement('div'); // Empty for response column
+            const actions = document.createElement('div');
+            if (isAdmin) {
+              const e = document.createElement('button');
+              e.className = 'edit-btn'; e.textContent = 'Edit'; e.onclick = () => openEditor('edit', i);
+              const d = document.createElement('button');
+              d.className = 'delete-btn'; d.textContent = 'Delete'; d.onclick = () => { data[cat].splice(i,1); saveData(); render(); };
+              actions.append(e,d);
+            } else {
+              const fav = document.createElement('button');
+              fav.className = 'fav-btn' + (favorites[key] ? ' fav' : '');
+              fav.textContent = '★'; fav.onclick=()=>{favorites[key]=!favorites[key]; fav.classList.toggle('fav',favorites[key]);};
+              actions.append(fav);
+            }
+            row.append(c, c2, actions);
+            box.appendChild(row);
+            el.results.appendChild(box);
+          } else if (cat === "New Updates") {
+            const key = `${cat}|${i}`;
+            if (showFav && !favorites[key]) return;
+            if (searchTerm && !(item.date + item.update).toLowerCase().includes(searchTerm)) return;
+            const box = document.createElement('div'); box.className = 'box';
+            const row = document.createElement('div'); row.className = 'service-row';
+            row.style.gridTemplateColumns = 'minmax(0, 1fr) auto'; // Adjusted to make content take full box width, actions on right
+            const c = document.createElement('div');
+            c.style.whiteSpace = 'normal'; // Ensure text wraps
+            c.style.overflowWrap = 'break-word'; // Break long words to fit box
+            c.style.wordBreak = 'break-word'; // Additional breaking for very long words
+            // Only show date (underlined and bigger) and update text, no title
+            c.innerHTML = `<div class="update-date" style="text-decoration: underline; font-size: 1.4em; margin-bottom: 0.7cm;">${item.date}</div><div class="update-item" style="white-space: normal; overflow-wrap: break-word;">${item.update}</div>`;
+            const actions = document.createElement('div');
+            if (isAdmin) {
+              const e = document.createElement('button');
+              e.className = 'edit-btn'; e.textContent = 'Edit'; e.onclick = () => openEditor('edit', i);
+              const d = document.createElement('button');
+              d.className = 'delete-btn'; d.textContent = 'Delete'; d.onclick = () => { data[cat].splice(i,1); saveData(); render(); };
+              actions.append(e,d);
+            }
+            // No favorites star button as per request
+            row.append(c, actions); // Only content and actions, no empty column
+            box.appendChild(row);
+            el.results.appendChild(box);
+          } else if (isResponseCat) {
+            // Handle all response subcategories with query and multiple responses
+            const query = item.query || '';
+            let itemArr = item.responses ? item.responses : [];
+            const combined = (query + ' ' + itemArr.join(' ')).toLowerCase();
+            if (searchTerm && !combined.includes(searchTerm)) return;
+            const box = document.createElement('div'); box.className = 'box';
+            itemArr.forEach((r, j) => {
+              const key = `${cat}|${i}|${j}`;
+              if (showFav && !favorites[key]) return;
+              renderResponseItem(box, {query, responses: [r]}, 0, 0, cat, isAdmin, favorites, copyText);
+            });
+            if (box.children.length > 0) el.results.appendChild(box);
+          }
+        });
+      }
+
+      // Dynamically set add button text based on category (only in admin mode)
+      if (isAdmin) {
+        if (currentCat === 'Forms / Sheets') {
+          el.addBtn.textContent = 'Add New Sheet / New Form';
+        } else if (currentCat === 'New Updates') {
+          el.addBtn.textContent = 'Add New Update';
+        } else {
+          // Default to "Add New Response" for all response subcategories
+          el.addBtn.textContent = 'Add New Response';
+        }
+      }
+      el.addBtn.style.display = isAdmin ? 'inline-block' : 'none';
+      showSpinner(false);
+    }, 50);
+  }
+  function openEditor(mode, idx = null) {
+    editing = { mode, idx };
+    const cat = currentCat;
+    const isForms = cat === "Forms / Sheets";
+    const isUpdates = cat === "New Updates";
+    const isResponseCat = responseCats.includes(cat);
+    const isNoQueryCat = (cat === "Holding Responses" || cat === "Calling Responses");
+    document.getElementById('edit-modal-title').textContent = `${mode === 'edit' ? 'Edit' : 'Add'} ${cat}`;
+    el.eName.style.display = isForms || isUpdates ? 'block' : 'none';
+    el.eLink.style.display = isForms ? 'block' : 'none';
+    el.eDate.style.display = isUpdates ? 'block' : 'none';
+    el.eQuery.style.display = (isResponseCat && !isNoQueryCat) ? 'block' : 'none';
+    el.eAddRespBtn.style.display = isResponseCat ? 'inline-block' : 'none';
+    document.getElementById('edit-response-0').placeholder = isForms ? 'Description (optional)' : isUpdates ? 'Update details' : 'Response';
+    // Clear previous responses in modal
+    el.eRespContainer.innerHTML = `
+      <div class="response-container">
+        <textarea id="edit-response-0" placeholder="Response"></textarea>
+      </div>
+    `;
+    el.eErr.style.display = 'none';
+    if (mode === 'edit') {
+      const item = data[cat][idx];
+      if (isForms) {
+        el.eName.value = item.name;
+        el.eLink.value = item.url;
+        document.getElementById('edit-response-0').value = item.desc;
+      } else if (isUpdates) {
+        el.eName.value = item.title;
+        el.eDate.value = item.date;
+        document.getElementById('edit-response-0').value = item.update;
+      } else if (isResponseCat) {
+        el.eQuery.value = item.query || '';
+        const responses = item.responses || [];
+        el.eRespContainer.innerHTML = '';
+        responses.forEach((resp, i) => {
+          const container = document.createElement('div');
+          container.className = 'response-container';
+          container.innerHTML = `
+            <textarea id="edit-response-${i}" placeholder="Response">${resp}</textarea>
+            ${i > 0 ? `<button class="remove-response-btn" onclick="removeResponse(${i})">X</button>` : ''}
+          `;
+          el.eRespContainer.appendChild(container);
+        });
+      } else {
+        document.getElementById('edit-response-0').value = data[cat][idx];
+      }
+    } else {
+      el.eName.value = el.eLink.value = el.eDate.value = el.eQuery.value = '';
+      document.getElementById('edit-response-0').value = '';
+    }
+    el.editModal.classList.add('active');
+  }
+  function closeEditor() {
+    el.editModal.classList.remove('active');
+    el.eErr.style.display = 'none';
+  }
+  function addResponse() {
+    const containers = el.eRespContainer.querySelectorAll('.response-container');
+    const newIndex = containers.length;
+    const container = document.createElement('div');
+    container.className = 'response-container';
+    container.innerHTML = `
+      <textarea id="edit-response-${newIndex}" placeholder="Response"></textarea>
+      <button class="remove-response-btn" onclick="removeResponse(${newIndex})">X</button>
+    `;
+    el.eRespContainer.appendChild(container);
+  }
+  function removeResponse(index) {
+    const containers = el.eRespContainer.querySelectorAll('.response-container');
+    if (containers.length > 1) {
+      containers[index].remove();
+    }
+  }
+  el.eAddRespBtn.onclick = addResponse;
+  document.getElementById('login-cancel').onclick = () => el.loginModal.classList.remove('active');
+  document.getElementById('edit-cancel').onclick = closeEditor;
+  document.getElementById('login-confirm').onclick = () => {
+    const u = document.getElementById('login-user').value.trim();
+    const p = document.getElementById('login-pass').value.trim();
+    if (u === 'orm@olaelectric.com' && p === 'Orm@1234') {
+      isAdmin = true;
+      document.body.classList.add('admin-mode');
+      el.loginModal.classList.remove('active');
+      el.doneBtn.style.display = 'inline-block';
+      el.addBtn.style.display = 'inline-block';
+      render();
+    } else alert('Invalid credentials');
+  };
+  document.getElementById('admin-btn').onclick = () => el.loginModal.classList.add('active');
+  el.doneBtn.onclick = () => {
+    isAdmin = false;
+    document.body.classList.remove('admin-mode');
+    el.doneBtn.style.display = 'none';
+    el.addBtn.style.display = 'none';
+    render();
+  };
+  el.addBtn.onclick = () => openEditor('add');
+  document.getElementById('edit-confirm').onclick = () => {
+    const cat = currentCat;
+    const isForms = cat === "Forms / Sheets";
+    const isUpdates = cat === "New Updates";
+    const isResponseCat = responseCats.includes(cat);
+    const name = el.eName.value.trim();
+    const resp = document.getElementById('edit-response-0').value.trim();
+    if (isForms) {
+      const url = el.eLink.value.trim();
+      if (!name || !url) return el.eErr.style.display = 'block';
+      const obj = { name, url, desc: resp };
+      if (editing.mode === 'edit') data[cat][editing.idx] = obj;
+      else data[cat].push(obj);
+    } else if (isUpdates) {
+      const date = el.eDate.value;
+      if (!name || !date || !resp) return el.eErr.style.display = 'block';
+      const obj = { title: name, date, update: resp };
+      if (editing.mode === 'edit') data[cat][editing.idx] = obj;
+      else data[cat].push(obj);
+    } else if (isResponseCat) {
+      const query = el.eQuery.value.trim();
+      const containers = el.eRespContainer.querySelectorAll('.response-container');
+      const responses = Array.from(containers)
+        .map((c, i) => document.getElementById(`edit-response-${i}`).value.trim())
+        .filter(r => r !== '');
+      if (responses.length === 0) return el.eErr.style.display = 'block';
+      const obj = { query, responses };
+      if (editing.mode === 'edit') data[cat][editing.idx] = obj;
+      else data[cat].push(obj);
+    } else {
+      if (!resp) return el.eErr.style.display = 'block';
+      if (editing.mode === 'edit') data[cat][editing.idx] = resp;
+      else data[cat].push(resp);
+    }
+    saveData();
+    closeEditor();
+    render();
+  };
+  document.querySelectorAll('.custom-select-wrapper').forEach(wrapper => {
+    const trigger = wrapper.querySelector('.custom-select-trigger');
+    const options = wrapper.querySelector('.custom-options');
+    let openTimeout, closeTimeout;
+    wrapper.addEventListener('mouseenter', () => {
+      clearTimeout(closeTimeout);
+      openTimeout = setTimeout(() => { wrapper.classList.add('open'); wrapper.setAttribute('aria-expanded', 'true'); }, 200);
+    });
+    wrapper.addEventListener('mouseleave', () => {
+      clearTimeout(openTimeout);
+      closeTimeout = setTimeout(() => { wrapper.classList.remove('open'); wrapper.setAttribute('aria-expanded', 'false'); }, 300);
+    });
+    options.querySelectorAll('.custom-option').forEach(option => {
+      option.addEventListener('click', () => {
+        wrapper.classList.remove('open');
+        el.mainSelect.value = option.dataset.value;
+        trigger.textContent = option.textContent;
+        document.querySelector('.custom-option.selected').classList.remove('selected');
+        option.classList.add('selected');
+        currentCat = option.dataset.value;
+        el.subButtons.forEach(btn => btn.classList.toggle('active', false));
+        el.subButtons.forEach(btn => btn.style.display = currentCat === 'Responses' ? 'flex' : 'none');
+        render();
+      });
+    });
+    trigger.addEventListener('click', () => {
+      const open = wrapper.classList.toggle('open');
+      wrapper.setAttribute('aria-expanded', open);
+    });
+  });
+  el.searchInput.addEventListener('input', render);
+  el.showFavBtn.onclick = () => {
+    const active = el.showFavBtn.getAttribute('data-active') === '1';
+    el.showFavBtn.setAttribute('data-active', active ? '0' : '1');
+    el.showFavBtn.textContent = active ? 'View Favorites' : 'View All';
+    render();
+  };
+  el.subButtons.forEach(btn => btn.addEventListener('click', () => {
+    currentCat = btn.dataset.cat;
+    el.subButtons.forEach(b => b.classList.toggle('active', b === btn));
+    render();
+  }));
+  el.toggleTheme = document.getElementById('toggle-theme');
+  const storedTheme = localStorage.getItem('theme');
+  if (!storedTheme) {
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.body.classList.add('dark');
+  } else if (storedTheme === 'dark') {
+    document.body.classList.add('dark');
+  }
+  el.toggleTheme.onclick = () => {
+    const dark = document.body.classList.toggle('dark');
+    localStorage.setItem('theme', dark ? 'dark' : 'light');
+  };
+  window.addEventListener('DOMContentLoaded', () => {
+    document.querySelector('.subcat-buttons').style.display = 'flex';
+    currentCat = 'Responses';
+    render();
+  });
+  // Handle Ctrl+F to focus on search bar
+  window.addEventListener('keydown', function(e) {
+    if (e.ctrlKey && (e.key === 'f' || e.key === 'F')) {
+      e.preventDefault();
+      const searchInput = document.getElementById('searchInput');
+      if (searchInput) {
+        searchInput.focus();
+        searchInput.select();
+      }
+    }
+  });
+</script>
+</body>
+</html>
